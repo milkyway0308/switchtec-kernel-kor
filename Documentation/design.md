@@ -1,57 +1,66 @@
-# Switchtec Kernel Design Documentation
+# Switchtec 커널 설명서
+해당 문서는 Switchtec 드라이버 전용 커널 코드 작업에 대한 기초적인 지식을 제공하는것을 목표로 하며,
 
-This document aims to provide a jumping off point to working with the
-kernel code for the switchtec driver. It describes some core concepts
-and landmarks to help get started hacking on the code. This document
-may not stay up to date so when in doubt, consult the code.
+코드를 수정하는데에 도움이 되는 몇가지 핵심 개념과 특이점을 설명합니다.
 
-The Switchtec kernel module is divided into two parts: switchtec.ko and
-ntb_hw_switchtec.ko. The former enumerates management and NTB endpoints,
-configures them, and provides the interface to switchtec-user. The later
-provides a driver for the Linux NTB stack. ntb_hw_switchtec.ko depends on
-switchtec.ko.
+해당 문서는 최신화되지 않았을 수 있으므로, 코드와 함께 참고하는것이 좋습니다.
+
+
+
+Switchtec 커널 모듈은 크게 2가지 파일, `switchtec.ko`와 `ntb_hw_switchtec`으로 나뉩니다.
+
+`switchtec.ko`는 NTB 엔드포인트를 열거하고 구성하는것에 초점을 맞추고 있으며,
+
+  Switchtec 커널 드라이버 개발자를 위한 인터페이스를 제공합니다.
+
+`ntb_hw_switchtec.ko`는 Linux NTB 스택용 드라이버를 제공합니다.
+
+  해당 파일은 `switchtec.ko`에 의존성을 갖습니다. 
 
 ## switchtec.ko
+기본 Switchtec 드라이버는 Linux의 표준 방식으로 디바이스 목록을 열거합니다.
+Linux의 기본 장치 열거 방식은 [LDD3][1]을 참고하십시오.
 
-The main Switchtec driver enumerates the devices in the standard way
-for Linux (how that is done is not covered in this document, for more
-information on Linux Driver implementations refer to [LDD3][1] or the
-Kernel source code).
 
-### Userspace Interface
+### 사용자 공간 인터페이스
+사용자 공간 인터페이스에 대한 정의는 [README.md 파일](/README.md) 혹은 [switchtec_ioclt.h](/linux/switchtec_ioctl.h)를 참고하십시오.
 
-Refer to the README file or switchtec_ioclt.h for more information on
-how the userspace interface is defined. The kernel module creates a
-character device for each switch that was enumerated. Reading and
-writing this device allows for creating MRPC commands and a few IOCTLs
-are provided so userspace does not have to directly access the GAS
-(which requires full root permission and has security and stability
-implications). For the implementation of these commands refer to
-switchtec_fops in switchtec.c.
+커널 모듈은 열거된 각 스위치에 대한 문자 디바이스(character device)를 생성합니다.
 
-Whenever a userspace application opens a switchtec char device, the
-kernel creates a switchtec_user structure. This structure is used for
-queueing MRPC commands so each application can have one MRPC command in
-flight at a time and the kernel will arbitrate between the applications
-on a first in first out basis.
+이러한 디버이스에 읽고 쓰는것을 통해 메모리 맵 원격 함수 호출(Memory-mapped Remote Procedure Call, MRPC)을 통해 명령어를 전송할 수 있으며, 
 
-When the application does a write, the kernel will queue the data to be
-sent to the firmware. If the queue is empty, it will immediately submit
-the command (see mrpc_queue_cmd). A read command will store how much data
-is to be read and block until the command has been completed. An event
-interrupt indicates when the command is completed and the kernel will
-read the output data and store it in the switchtec_user structure (see
-mrpc_complete_cmd). If the read command has not yet set how much output
-data is expected the kernel will read all of the data into the buffer
-(which may be slower than expected). Once the data is read the completion
-in switchtec_user will signal the read command to return the data
-to userspace.
+미리 구현된 IOTCL을 통해 일반 주소 공간(GAS, Generic Address Space)에 직접 접근할 필요 없이 드라이버의 사용이 가능합니다. 
 
-In case something unexpected happens the kernel has a timeout on all
-MRPC commands (see mrpc_timeout_work). Usually the interrupt will occur
-before the timeout but if it is missed the timeout will prevent the
-queue from being hung. Note: however if the firmware never indicates the
-command is complete this will still hang the queue.
+IOTCL을 사용하는것으로 일반 주소 공간에 직접 접근함으로써 발생하는 보안 및 안정성의 강화가 이루어지기 때문에 Switchtec 커널 모듈에 의존하는 어플리케이션에 큰 이점을 가져다 줍니다.
+
+미리 구현된 IOTCL과 구현 방식은 [switchtec.c 파일의 switch_fops 변수](/switchtec.c)를 참고할 수 있습니다.
+
+
+사용자 공간 어플리케이션이 Switchtec 문자 디바이스를 열 때마다, 커널은 switchtec_user 구조체를 생성합니다.
+
+이 구조체는 MRPC 명령을 큐(Queue)하는데 사용되며, 커널은 해당 구조체를 통해 한번에 하나의 MRPC 명령이 이루어지게끔 중재합니다.
+
+이러한 방식을 통해 각 응용 프로그램은 안정적으로 한번에 하나의 RPC 명령을 실행시킬 수 있습니다.
+
+
+어플리케이션이 쓰기 작업을 수행하면, 커널은 펌웨어로 전송할 데이터를 대기열에 추가합니다.
+
+만약 대기열이 비어있다면 커널은 즉시 명령어를 전송합니다. (해당 기능의 구현은 [mrpc_queue_cmd](/switchtec.c)를 참고하세요.)
+
+읽기 작업은 얼마나 데이터를 읽어야 하는지 저장하고, 펌웨어가 지정된 데이터의 양만큼 반환할때 까지 대기합니다.
+
+이벤트 인터럽트는 명령어가 처리된 후, 커널이 출력 데이터를 읽고 이를 switchtec_user 구조체에 저장할 때를 나타냅니다. (해당 기능의 구현은 [mrpc_complete_cmd](/switchtec.c)를 참고하세요.)
+
+읽기 작업이 예정된 출력된 데이터의 양을 설정하지 않은 경우, 커널은 모든 출력 데이터를 버퍼로 읽어들입니다.
+
+데이터를 모두 읽었다면 switchtec_user 구조체가 사용자 공간으로 데이터를 반환하기 위해 읽기 작업을 재개시킵니다.
+
+
+예기치 못한 문제가 발생했을 경우를 대비하기 위해 커널은 모든 MRPC 명령어에 타임아웃을 적용합니다.(해당 기능의 구현은 [mrpc_timeout_work](/switchtec.c)를 참고하세요.)
+
+일반적으로 언터럽트는 타임아웃이 적용되기 전에 발생하나, 인터럽트가 시간 초과로 발생하지 않았을 경우에도 대기열은 중단되지 않습니다.
+
+하지만, 펌웨어에서 명령어 처리가 완료되었다고 표시하기 전에는 대기열이 재개되지 않기에 주의해야 합니다.
 
 ### Interrupts
 
