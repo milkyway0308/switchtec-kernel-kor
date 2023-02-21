@@ -13,7 +13,7 @@ Microsemi의 "Switchtec" 계열의 PCI 스위치 디바이스는 이미 표준 P
 
 Switchtec Kernel은 이러한 추가 기능을 사용 가능하게 구현되었습니다.
 
-### 인터페이스
+## 인터페이스
 
 Switchtec 관리 펌웨어와 통신한다는것은 메모리 맵 원격 함수 호출(Memory-mapped Remote Procedure Call, MRPC)를 통해 통신한다는것을 의미합니다.
 
@@ -24,7 +24,7 @@ Switchtec 관리 펌웨어와 통신한다는것은 메모리 맵 원격 함수 
 인터페이스는 한번에 1개의 명령어만을 처리할 수 있습니다.
 
 
-### 사용자 공간 인터페이스 (Userspace Interface)
+## 사용자 공간 인터페이스 (Userspace Interface)
 
 MRPC 인터페이스는 각 관리 엔드포인트마다 하나씩 간단한 문자 디바이스(Char Device)를 통해 `dev/switchtec#`과 같은 이름으로 사용자 공간에 노출됩니다.
 
@@ -87,8 +87,7 @@ MRPC 인터페이스는 각 관리 엔드포인트마다 하나씩 간단한 문
 * SWITCHTEC_IOCTL_PORT_TO_PFF - 파티션 번호와 SwitchTec 로직 포트 ID를 PCI 함수 프레임워크 번호로 변환합니다.
 
 
-Non-Transparent Bridge (NTB) 드라이버
-===================================
+## Non-Transparent Bridge (NTB) 드라이버
 
 NTB 하드웨어 드라이버는 Switchtec 하드웨어 지원을 위해 ntb_hw_switchtec 파일에 작성되었습니다.
 현재로써는 정확히 2개의 NT 파티션과 0개 이상의 비-NT 파티션으로 이루어진 스위치만을 지원합니다.
